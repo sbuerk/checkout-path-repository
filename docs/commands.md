@@ -19,9 +19,14 @@ mv <parent>/.<directory>.clone-<pid> <path>
 
 * **Existing directories are never modified** – no fetch, pull, branch switch
   or re-clone. A checkout is yours once it exists. An existing directory
-  without a `composer.json` is reported with a warning (it is not a usable
-  checkout; remove it to clone again). Only an **empty** directory is
-  replaced by the clone.
+  without a `composer.json` is reported with a warning and counted as
+  "unusable" (it is not a checkout the plugin can register; remove it to clone
+  again). Only an **empty** directory is replaced by the clone.
+* **Rewritten urls are named**: when the git configuration rewrites the
+  manifest url (`url.<base>.insteadOf`, e.g. ssh to https in CI), messages
+  show both, e.g. `git@github.com:vendor/x.git (rewritten to
+  https://github.com/vendor/x.git by git config)` – resolved locally with
+  `git ls-remote --get-url`.
 * **Complete or nothing**: the clone is written to a hidden temporary sibling
   and renamed into place when git is done, so a concurrent `composer update`
   never sees a half-written checkout and an interrupted clone leaves no
@@ -94,7 +99,7 @@ States:
 | `ok`               | yes     | Present and installed from the checkout with a version matching the manifest. |
 | `missing`          | yes     | Not present and not installed from its location. Nothing to do. |
 | `unused`           | yes     | Present, `"require": false` and not installed (nothing requires it). |
-| `not-installed`    | **no**  | Present and required, but not installed or not in the lock file – e.g. cloned after the last update. `composer install` rejects the lock then (exit code `4`). |
+| `not-installed`    | **no**  | Present and required, but not installed or not in the lock file – e.g. cloned after the last update; `composer install` rejects the lock then (exit code `4`). Also a present `"require": false` checkout that is locked (another package requires it) but not installed, e.g. after removing `vendor/`. |
 | `other-source`     | **no**  | Present, but installed or locked from somewhere else (packagist.org, another path). |
 | `version-mismatch` | **no**  | Installed or locked from the checkout, but the manifest `version` changed since. |
 | `stale`            | **no**  | Installed or locked from the checkout location, but the checkout is gone. `composer install` fails with `Source path ... is not found` then. |

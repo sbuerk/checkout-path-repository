@@ -223,6 +223,11 @@ final class StatusResolver
         if ($checkout->require && ($installedSource === self::ABSENT || $lockedSource === self::ABSENT)) {
             return CheckoutStatus::STATE_NOT_INSTALLED;
         }
+        // Also for "require": false - locked (because another package needs
+        // it) but not installed, e.g. after removing vendor/.
+        if ($installedSource === self::ABSENT && $lockedSource === self::FROM_CHECKOUT) {
+            return CheckoutStatus::STATE_NOT_INSTALLED;
+        }
         foreach ([$installed, $locked] as $package) {
             if ($package !== null && !$this->versionMatches($checkout->version, $package)) {
                 return CheckoutStatus::STATE_VERSION_MISMATCH;

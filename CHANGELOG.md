@@ -20,13 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a per-package `"require": false` opt-out, and the `dev` stability flag for
   every present checkout.
 - A single notice for checkouts that are not present on `install`, `update`,
-  `remove` and `reinstall` (on every command with `-v`, listing each).
+  `require`, `remove` and `reinstall` (on every command with `-v`, listing
+  each).
 - Validation errors are printed before the plugin fails, so they also show
   up for the `checkouts:*` commands.
 - `composer checkouts:clone [--strict] [<package>...]`: clones missing (or
   empty) checkouts after a non-interactive, time-limited `git ls-remote`
   access check, through a temporary sibling directory renamed into place,
-  never modifies existing directories, serialises concurrent runs with a
+  never modifies existing directories (counting those without a
+  `composer.json` as unusable), names the url git really uses when the git
+  configuration rewrites it (`insteadOf`), serialises concurrent runs with a
   `flock()` on `<manifest directory>/.checkouts.lock`. Remote calls suppress
   terminal, askpass and credential manager prompts and use
   `ssh -o BatchMode=yes -o ConnectTimeout=15` unless ssh is configured.

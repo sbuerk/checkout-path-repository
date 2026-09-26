@@ -135,7 +135,7 @@ final class CloneCommand extends BaseCommand
 
         $git = $this->git ?? new GitCheckout(new ProcessExecutor($io));
         $rootDirectory = $this->filesystem->normalizePath($this->configurationLoader->rootDirectory($composer));
-        $counts = ['cloned' => 0, 'present' => 0, 'inaccessible' => 0, 'failed' => 0];
+        $counts = ['cloned' => 0, 'present' => 0, 'unusable' => 0, 'inaccessible' => 0, 'failed' => 0];
         try {
             foreach ($selected as $checkout) {
                 $counts[$this->cloneOne($checkout, $git, $io, $rootDirectory)]++;
@@ -145,9 +145,10 @@ final class CloneCommand extends BaseCommand
         }
 
         $io->writeError(sprintf(
-            'checkouts:clone: %d cloned, %d already present, %d not accessible, %d failed.',
+            'checkouts:clone: %d cloned, %d already present, %d unusable (no composer.json), %d not accessible, %d failed.',
             $counts['cloned'],
             $counts['present'],
+            $counts['unusable'],
             $counts['inaccessible'],
             $counts['failed'],
         ));
@@ -187,7 +188,7 @@ final class CloneCommand extends BaseCommand
     }
 
     /**
-     * @return 'cloned'|'present'|'inaccessible'|'failed'
+     * @return 'cloned'|'present'|'unusable'|'inaccessible'|'failed'
      */
     private function cloneOne(CheckoutDefinition $checkout, GitCheckout $git, IOInterface $io, string $rootDirectory): string
     {
@@ -206,16 +207,19 @@ final class CloneCommand extends BaseCommand
                     $checkout->name,
                     $displayPath,
                 ));
+                return 'unusable';
             }
             return 'present';
         }
+
+        $displayUrl = $this->displayUrl($checkout->url, $git);
 
         $access = $git->isAccessible($checkout->url, $checkout->branch);
         if (!$access->isSuccessful()) {
             $io->writeError(sprintf(
                 '  - <warning>%s: skipped, %s (branch "%s") is not accessible: %s</warning>',
                 $checkout->name,
-                $checkout->url,
+                $displayUrl,
                 $checkout->branch,
                 $access->exitCode === 2 ? 'branch not found' : $access->reason(),
             ));
@@ -249,8 +253,19 @@ final class CloneCommand extends BaseCommand
             $io->writeError(sprintf('  - <error>%s: could not move the clone into %s</error>', $checkout->name, $displayPath));
             return 'failed';
         }
-        $io->writeError(sprintf('  - %s: cloned %s (branch "%s") into %s', $checkout->name, $checkout->url, $checkout->branch, $displayPath));
+        $io->writeError(sprintf('  - %s: cloned %s (branch "%s") into %s', $checkout->name, $displayUrl, $checkout->branch, $displayPath));
         return 'cloned';
+    }
+
+    /**
+     * The manifest url, plus the url git really talks to when the git
+     * configuration rewrites it (`url.<base>.insteadOf`, e.g. ssh to https in
+     * CI) - otherwise messages would name a transport that is not used.
+     */
+    private function displayUrl(string $url, GitCheckout $git): string
+    {
+        $effectiveUrl = $git->effectiveUrl($url);
+        return $effectiveUrl === $url ? $url : sprintf('%s (rewritten to %s by git config)', $url, $effectiveUrl);
     }
 
     /**

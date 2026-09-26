@@ -160,6 +160,23 @@ final class StatusCommandTest extends IntegrationTestCase
     }
 
     #[Test]
+    public function optionalCheckoutThatIsLockedButNotInstalledIsNotInstalled(): void
+    {
+        $this->createFleet();
+        // Not required by the root package, but by fixture/ext: locked.
+        $this->changeManifestPackage('fixture/lib', ['require' => false]);
+        $this->writeRoot();
+        $this->update();
+        $this->filesystem->removeDirectory($this->workspace . '/root/vendor');
+        clearstatcache(true);
+
+        [$exitCode, $status] = $this->statusAsJson();
+
+        self::assertSame(StatusCommand::EXIT_OUT_OF_SYNC, $exitCode);
+        self::assertSame(CheckoutStatus::STATE_NOT_INSTALLED, self::checkout($status, 'fixture/lib')['state'], 'not "unused": the lock holds it');
+    }
+
+    #[Test]
     public function reportsPackageInstalledFromAnotherSource(): void
     {
         $this->createFleet();

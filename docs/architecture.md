@@ -39,7 +39,7 @@ rethrow keeps every command failing, see [limitations](limitations.md#4-an-inval
 `activate()` runs for every command, so the notice about checkouts that are
 not present is verbose there. `activate()` registers a listener for
 `PluginEvents::COMMAND` on the composer instance it is given, which prints the
-one-line notice for `install`, `update`, `remove` and `reinstall` – the
+one-line notice for `install`, `update`, `require`, `remove` and `reinstall` – the
 commands where it explains a missing package. A listener closure bound to the
 instance keeps the plugin object free of state (the event itself carries
 neither the composer instance nor the IO).

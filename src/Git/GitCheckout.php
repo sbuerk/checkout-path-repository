@@ -71,6 +71,17 @@ final class GitCheckout
         }
     }
 
+    /**
+     * The url git actually uses for `$url`, after `url.<base>.insteadOf`
+     * rewriting of the git configuration. Local only, no remote access.
+     */
+    public function effectiveUrl(string $url): string
+    {
+        $result = $this->run(['git', 'ls-remote', '--get-url', $url]);
+        $effectiveUrl = trim($result->output);
+        return $result->isSuccessful() && $effectiveUrl !== '' ? $effectiveUrl : $url;
+    }
+
     public function clone(string $url, string $branch, string $directory): GitResult
     {
         return $this->runNonInteractive(['git', 'clone', '--quiet', '--branch', $branch, '--', $url, $directory]);

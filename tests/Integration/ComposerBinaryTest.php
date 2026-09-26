@@ -162,7 +162,7 @@ final class ComposerBinaryTest extends IntegrationTestCase
     }
 
     #[Test]
-    public function missingNoticeIsShownForUpdateButNotForShow(): void
+    public function missingNoticeIsShownForUpdateAndRequireButNotForShow(): void
     {
         $this->installedFleet();
 
@@ -170,6 +170,10 @@ final class ComposerBinaryTest extends IntegrationTestCase
         self::assertStringNotContainsString('checkouts not present', $output);
 
         [, $output] = $this->composer(['update']);
+        self::assertStringContainsString('checkout-path-repository: 1 of 3 checkouts not present, skipped', $output);
+
+        [$exitCode, $output] = $this->composer(['require', 'fixture/lib:1.19.x-dev']);
+        self::assertSame(0, $exitCode, $output);
         self::assertStringContainsString('checkout-path-repository: 1 of 3 checkouts not present, skipped', $output);
     }
 

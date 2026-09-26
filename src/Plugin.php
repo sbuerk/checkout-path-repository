@@ -43,7 +43,7 @@ final class Plugin implements PluginInterface, Capable
      * Commands changing the installed packages: only there the notice about
      * checkouts that are not present is shown without `-v`.
      */
-    public const NOTICE_COMMANDS = ['install', 'update', 'remove', 'reinstall'];
+    public const NOTICE_COMMANDS = ['install', 'update', 'require', 'remove', 'reinstall'];
 
     private ConfigurationLoader $configurationLoader;
     private RepositoryRegistrar $repositoryRegistrar;

@@ -42,7 +42,7 @@ final class CloneCommandTest extends IntegrationTestCase
         self::assertSame('5', trim($this->git(['symbolic-ref', '--short', 'HEAD'], $this->workspace . '/packages/ext')));
         self::assertStringContainsString('fixture/lib: cloned', $output);
         self::assertStringContainsString('fixture/private: skipped, ' . $this->workspace . '/remotes/private (branch "1") is not accessible', $output);
-        self::assertStringContainsString('checkouts:clone: 2 cloned, 0 already present, 1 not accessible, 0 failed.', $output);
+        self::assertStringContainsString('checkouts:clone: 2 cloned, 0 already present, 0 unusable (no composer.json), 1 not accessible, 0 failed.', $output);
         self::assertStringContainsString('Run "composer update" to install the new checkouts.', $output);
         self::assertFileExists($this->workspace . '/packages/.checkouts.lock');
 
@@ -90,7 +90,7 @@ final class CloneCommandTest extends IntegrationTestCase
         self::assertSame(['notes.txt'], array_values(array_diff((array) scandir($this->workspace . '/packages/ext'), ['.', '..'])));
         self::assertStringContainsString('fixture/lib: ../packages/lib exists, left untouched', $io->getOutput());
         self::assertStringContainsString('fixture/ext: ../packages/ext exists but has no composer.json, left untouched - remove it to clone again', $io->getOutput());
-        self::assertStringContainsString('checkouts:clone: 0 cloned, 2 already present, 0 not accessible, 0 failed.', $io->getOutput());
+        self::assertStringContainsString('checkouts:clone: 0 cloned, 1 already present, 1 unusable (no composer.json), 0 not accessible, 0 failed.', $io->getOutput());
     }
 
     #[Test]
@@ -106,6 +106,26 @@ final class CloneCommandTest extends IntegrationTestCase
 
         self::assertSame(CloneCommand::EXIT_SUCCESS, $exitCode);
         self::assertStringContainsString('fixture/ext: ../packages/ext exists but has no composer.json, left untouched', $io->getOutput());
+    }
+
+    #[Test]
+    public function namesTheUrlGitUsesWhenTheConfigurationRewritesIt(): void
+    {
+        $lib = $this->createRemote('lib', 'main', ['name' => 'fixture/lib']);
+        // Like CI rewriting "git@github.com:" to https.
+        file_put_contents($this->workspace . '/.gitconfig', sprintf("[url \"%s/\"]\n\tinsteadOf = rewritten:\n", $this->workspace . '/remotes'));
+        $this->writeManifest([
+            'fixture/lib' => ['url' => 'rewritten:lib', 'branch' => 'main', 'version' => '1.x-dev'],
+            'fixture/other' => ['url' => 'rewritten:other', 'branch' => 'main', 'version' => '1.x-dev'],
+        ]);
+        $this->writeRoot();
+        $io = new BufferIO();
+
+        [$exitCode] = $this->runCommand(new CloneCommand(), $this->createComposer($io), $io);
+
+        self::assertSame(CloneCommand::EXIT_SUCCESS, $exitCode, $io->getOutput());
+        self::assertStringContainsString('fixture/lib: cloned rewritten:lib (rewritten to ' . $lib . ' by git config) (branch "main")', $io->getOutput());
+        self::assertStringContainsString('fixture/other: skipped, rewritten:other (rewritten to ' . $this->workspace . '/remotes/other by git config) (branch "main") is not accessible', $io->getOutput());
     }
 
     #[Test]

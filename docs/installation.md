@@ -31,11 +31,20 @@ or, as a local package in a mono repository, through a `path` repository:
 }
 ```
 
-`allow-plugins` is required: the plugin declares `plugin-optional: false`, so a
-non-interactive composer run fails instead of silently running without it (the
-checkouts would just not be installed, which is hard to notice). This also
-applies when the plugin is pulled in by another package: the consuming root
-project has to allow it explicitly.
+`allow-plugins` is required: the plugin declares `plugin-optional: false`
+(composer's default, stated explicitly), so a non-interactive composer run
+fails instead of silently running without it (the checkouts would just not be
+installed, which is hard to notice).
+
+This also applies when the plugin is pulled in **transitively**, as a
+dependency of another package: every project installing that package then
+needs `"sbuerk/checkout-path-repository": true` (or `false`, to explicitly
+not run it) in its own `config.allow-plugins`. Without an entry, composer asks
+in interactive runs and aborts non-interactive ones (CI, container start-up)
+with an error saying the plugin is blocked by the `allow-plugins` config.
+Therefore require the plugin in the root project that owns the manifest –
+typically as a development dependency – and do not add it to the `require`
+section of a library or extension that others install.
 
 Then configure the manifest, see [configuration](configuration.md).
 
