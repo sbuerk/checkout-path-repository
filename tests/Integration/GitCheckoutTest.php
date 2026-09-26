@@ -17,6 +17,7 @@ namespace SBUERK\CheckoutPathRepository\Tests\Integration;
 
 use Composer\Util\Platform;
 use Composer\Util\ProcessExecutor;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use SBUERK\CheckoutPathRepository\Git\GitCheckout;
 
@@ -66,18 +67,37 @@ final class GitCheckoutTest extends IntegrationTestCase
         self::assertFalse(Platform::getEnv('GIT_TERMINAL_PROMPT'), 'the environment is restored');
     }
 
+    /**
+     * @return array<string, array{int}>
+     */
+    public static function composerProcessTimeouts(): array
+    {
+        return [
+            'composer default timeout' => [300],
+            // COMPOSER_PROCESS_TIMEOUT=0, as set by CI setups: no limit at all
+            'unlimited process timeout' => [0],
+        ];
+    }
+
     #[Test]
-    public function accessCheckGivesUpAfterItsTimeout(): void
+    #[DataProvider('composerProcessTimeouts')]
+    public function accessCheckGivesUpAfterItsTimeout(int $composerTimeout): void
     {
         $this->setEnvironment('FAKE_SSH_SLEEP', '10');
-        $started = microtime(true);
+        $originalTimeout = ProcessExecutor::getTimeout();
+        ProcessExecutor::setTimeout($composerTimeout);
+        try {
+            $started = microtime(true);
 
-        $result = (new GitCheckout(new ProcessExecutor(), 1))->isAccessible(self::SSH_URL, 'main');
+            $result = (new GitCheckout(new ProcessExecutor(), 1))->isAccessible(self::SSH_URL, 'main');
 
-        self::assertLessThan(8, microtime(true) - $started);
-        self::assertSame(GitCheckout::EXIT_TIMEOUT, $result->exitCode);
-        self::assertSame('fatal: timed out after 1 seconds', $result->reason());
-        self::assertSame(300, ProcessExecutor::getTimeout(), 'composer\'s process timeout is restored');
+            self::assertLessThan(8, microtime(true) - $started);
+            self::assertSame(GitCheckout::EXIT_TIMEOUT, $result->exitCode);
+            self::assertSame('fatal: timed out after 1 seconds', $result->reason());
+            self::assertSame($composerTimeout, ProcessExecutor::getTimeout(), 'composer\'s process timeout is restored');
+        } finally {
+            ProcessExecutor::setTimeout($originalTimeout);
+        }
     }
 
     #[Test]
