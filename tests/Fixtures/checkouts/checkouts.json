@@ -1,0 +1,29 @@
+{
+	"line": {
+		"id": "1",
+		"cores": [12, 13]
+	},
+	"packages": {
+		"fixture/present-a": {
+			"url": "https://example.com/present-a.git",
+			"branch": "main",
+			"version": "1.19.x-dev"
+		},
+		"fixture/present-b": {
+			"url": "git@example.com:fixture/present-b.git",
+			"branch": "5",
+			"version": "5.1.x-dev",
+			"require": false
+		},
+		"fixture/missing": {
+			"url": "https://example.com/missing.git",
+			"branch": "2",
+			"version": "2.x-dev"
+		},
+		"fixture/no-composer-json": {
+			"url": "https://example.com/no-composer-json.git",
+			"branch": "1",
+			"version": "1.0.x-dev"
+		}
+	}
+}
