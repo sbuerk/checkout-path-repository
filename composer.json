@@ -2,6 +2,11 @@
     "name": "sbuerk/checkout-path-repository",
     "description": "Composer plugin that registers local git checkouts listed in a manifest as path repositories, pins their versions and adds them as root requirements - optional checkouts that are missing are skipped.",
     "license": "GPL-2.0-or-later",
+    "homepage": "https://github.com/sbuerk/checkout-path-repository",
+    "support": {
+        "issues": "https://github.com/sbuerk/checkout-path-repository/issues",
+        "source": "https://github.com/sbuerk/checkout-path-repository"
+    },
     "type": "composer-plugin",
     "keywords": [
         "composer",

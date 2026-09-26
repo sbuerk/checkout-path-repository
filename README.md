@@ -1,5 +1,10 @@
 # sbuerk/checkout-path-repository
 
+[![CI](https://github.com/sbuerk/checkout-path-repository/actions/workflows/ci.yml/badge.svg)](https://github.com/sbuerk/checkout-path-repository/actions/workflows/ci.yml)
+[![Latest version](https://img.shields.io/packagist/v/sbuerk/checkout-path-repository)](https://packagist.org/packages/sbuerk/checkout-path-repository)
+[![PHP version](https://img.shields.io/packagist/dependency-v/sbuerk/checkout-path-repository/php)](https://packagist.org/packages/sbuerk/checkout-path-repository)
+[![License](https://img.shields.io/packagist/l/sbuerk/checkout-path-repository)](LICENSE)
+
 A [Composer](https://getcomposer.org/) plugin for development setups that work
 on many packages at once: it installs a set of **local git checkouts** listed
 in a manifest through [`path` repositories](https://getcomposer.org/doc/05-repositories.md#path)

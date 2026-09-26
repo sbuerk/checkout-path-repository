@@ -38,19 +38,29 @@ COMPOSER_NO_SECURITY_BLOCKING=1 composer update --prefer-lowest
 composer ci:tests
 ```
 
-> [!NOTE]
-> The workflow is written for the plugin's own repository. While the plugin
-> lives in a sub directory of another repository (`packages-dev/` of a mono
-> repository), GitHub does not run it – only workflows in the repository
-> root's `.github/workflows/` are read. The host repository has to run
-> `composer ci` in this directory itself until the plugin is extracted.
+The job `all checks` depends on all other jobs and only succeeds when every
+one of them did. It is the single status check the branch rulesets require,
+so the matrix can change without touching the rulesets.
 
 ## Releasing
 
-There is no release tooling yet (`bin/release`, a publish workflow): the
-plugin is not published on its own. Both follow the conventions of the
-maintainer's other composer plugins when it is extracted into its own
-repository.
+`main` and the version branches (`1`, `1.x`, `1.2`, ...) are protected by
+rulesets: linear history only, changes through pull requests that are
+rebase-merged, and the `all checks` status has to be green. Releases are
+tags named `x.y.z` without a prefix.
+
+```bash
+bin/release --dry-run 1.2.0   # preview every step, change nothing
+bin/release 1.2.0
+```
+
+`bin/release` needs `git` and an authenticated `gh`, and a clean working
+tree on the branch to release from. It turns the `[Unreleased]` section of
+`CHANGELOG.md` into the version, merges that as `[RELEASE] x.y.z` through a
+pull request once CI is green, tags the merged commit, and re-opens an
+`[Unreleased]` section in a follow-up pull request. The pushed tag triggers
+`.github/workflows/publish.yml`, which creates the GitHub release; Packagist
+picks up the tag through the repository webhook.
 
 ## Project layout
 

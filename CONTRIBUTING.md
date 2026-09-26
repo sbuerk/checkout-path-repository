@@ -59,8 +59,8 @@ Commit messages follow the
   *why*.
 * Footer keywords where applicable.
 
-As this project currently has no issue tracker, the `Resolves:` / `Releases:`
-footer lines are omitted.
+When a change fixes or implements a GitHub issue, reference it with a
+`Resolves: #<number>` footer line.
 
 ### Example
 

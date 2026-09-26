@@ -38,4 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   code `3` (`StatusCommand::EXIT_OUT_OF_SYNC`) when `composer update` is
   needed, including for removed and newly added checkouts and for packages
   removed from the manifest whose checkout is gone (`orphaned`).
-- Unit and integration test suites, documentation and a CI workflow.
+- Unit and integration test suites, documentation and a CI workflow with an
+  aggregating `all checks` job.
+- Release tooling: `bin/release` and a workflow publishing GitHub releases
+  for version tags.
+
+[Unreleased]: https://github.com/sbuerk/checkout-path-repository/commits/main
