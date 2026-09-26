@@ -16,7 +16,12 @@ declare(strict_types=1);
 namespace SBUERK\CheckoutPathRepository\Tests\Integration;
 
 use Composer\IO\BufferIO;
+use Composer\Plugin\CommandEvent;
+use Composer\Plugin\PluginEvents;
 use PHPUnit\Framework\Attributes\Test;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * Runs a real `composer update` (composer's Installer) with the plugin active.
@@ -30,7 +35,7 @@ final class InstallTest extends IntegrationTestCase
         // No "minimum-stability": the default "stable" has to be lifted by the
         // stability flags the plugin adds for its root requirements.
         $this->writeRoot();
-        $io = new BufferIO();
+        $io = new BufferIO('', OutputInterface::VERBOSITY_VERBOSE);
 
         $exitCode = $this->runUpdate($this->createComposer($io), $io);
 
@@ -57,6 +62,25 @@ final class InstallTest extends IntegrationTestCase
         self::assertSame(['fixture/ext' => 20, 'fixture/lib' => 20], $stabilityFlags);
         // The root requirements exist in memory only.
         self::assertStringNotContainsString('fixture/', (string) file_get_contents($this->workspace . '/root/composer.json'));
+    }
+
+    #[Test]
+    public function missingNoticeIsShownForCommandsChangingPackagesOnly(): void
+    {
+        $this->createFleet();
+        $this->writeRoot();
+        $io = new BufferIO();
+        $composer = $this->createComposer($io);
+        self::assertStringNotContainsString('checkout-path-repository', $io->getOutput(), 'activation itself is quiet without -v');
+        $output = new BufferedOutput();
+
+        foreach (['show', 'dump-autoload', 'why'] as $command) {
+            $composer->getEventDispatcher()->dispatch(PluginEvents::COMMAND, new CommandEvent(PluginEvents::COMMAND, $command, new ArrayInput([]), $output));
+        }
+        self::assertStringNotContainsString('checkout-path-repository', $io->getOutput());
+
+        $composer->getEventDispatcher()->dispatch(PluginEvents::COMMAND, new CommandEvent(PluginEvents::COMMAND, 'update', new ArrayInput([]), $output));
+        self::assertStringContainsString('checkout-path-repository: 1 of 3 checkouts not present, skipped', $io->getOutput());
     }
 
     #[Test]

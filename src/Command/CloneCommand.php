@@ -77,12 +77,14 @@ final class CloneCommand extends BaseCommand
             )
             ->setHelp(
                 <<<'HELP'
-                    Clones every checkout of the manifest whose directory does not exist yet:
+                    Clones every checkout of the manifest whose directory does not exist yet (or
+                    is empty):
 
                         <info>git clone --branch <branch> <url> <path></info>
 
-                    Existing directories are never modified - pull, switch branches or re-clone
-                    them yourself. Before cloning, access is checked non-interactively with
+                    The clone is written to a hidden sibling directory and moved into place when
+                    complete. Existing directories are never modified - pull, switch branches or
+                    re-clone them yourself. Before cloning, access is checked non-interactively with
                     <info>git ls-remote</info>; an inaccessible remote (e.g. a private repository without
                     access) is skipped with a notice and does not fail the command unless
                     <info>--strict</info> is given.
@@ -191,9 +193,20 @@ final class CloneCommand extends BaseCommand
     {
         $displayPath = $this->filesystem->findShortestPath($rootDirectory, $checkout->absolutePath, true);
 
-        // Checked after acquiring the lock: a concurrent run may have cloned it meanwhile.
-        if ($checkout->directoryExists()) {
-            $io->writeError(sprintf('  - %s: %s exists, left untouched', $checkout->name, $displayPath), true, IOInterface::VERBOSE);
+        // Checked after acquiring the lock: a concurrent run may have cloned it
+        // meanwhile. An empty directory (e.g. created by a bind mount or by
+        // hand) is not a checkout and is replaced; anything else is left alone.
+        $isEmptyDirectory = $checkout->isEmptyDirectory();
+        if ($checkout->directoryExists() && !$isEmptyDirectory) {
+            if ($checkout->isPresent()) {
+                $io->writeError(sprintf('  - %s: %s exists, left untouched', $checkout->name, $displayPath), true, IOInterface::VERBOSE);
+            } else {
+                $io->writeError(sprintf(
+                    '  - <warning>%s: %s exists but has no composer.json, left untouched - remove it to clone again</warning>',
+                    $checkout->name,
+                    $displayPath,
+                ));
+            }
             return 'present';
         }
 
@@ -209,20 +222,57 @@ final class CloneCommand extends BaseCommand
             return 'inaccessible';
         }
 
-        $parent = dirname($checkout->absolutePath);
         try {
-            $this->filesystem->ensureDirectoryExists($parent);
+            $this->filesystem->ensureDirectoryExists(dirname($checkout->absolutePath));
+            $this->removeStaleTemporaryClones($checkout);
         } catch (\RuntimeException $e) {
             $io->writeError(sprintf('  - <error>%s: %s</error>', $checkout->name, $e->getMessage()));
             return 'failed';
         }
 
-        $result = $git->clone($checkout->url, $checkout->branch, $checkout->absolutePath);
+        // Clone next to the target and move it into place when complete: a
+        // concurrent "composer update" never registers a half-written working
+        // tree, and an interrupted clone (e.g. a container being stopped)
+        // leaves a temporary directory instead of a broken checkout.
+        $temporaryDirectory = $this->temporaryClonePrefix($checkout) . getmypid();
+        $result = $git->clone($checkout->url, $checkout->branch, $temporaryDirectory);
         if (!$result->isSuccessful()) {
+            $this->filesystem->removeDirectory($temporaryDirectory);
             $io->writeError(sprintf('  - <error>%s: git clone failed: %s</error>', $checkout->name, $result->reason()));
+            return 'failed';
+        }
+        if ($isEmptyDirectory) {
+            @rmdir($checkout->absolutePath);
+        }
+        if (!@rename($temporaryDirectory, $checkout->absolutePath)) {
+            $this->filesystem->removeDirectory($temporaryDirectory);
+            $io->writeError(sprintf('  - <error>%s: could not move the clone into %s</error>', $checkout->name, $displayPath));
             return 'failed';
         }
         $io->writeError(sprintf('  - %s: cloned %s (branch "%s") into %s', $checkout->name, $checkout->url, $checkout->branch, $displayPath));
         return 'cloned';
+    }
+
+    /**
+     * Temporary clone directories are hidden siblings of the checkout, on the
+     * same file system for an atomic rename():
+     * `<parent>/.<checkout directory>.clone-<pid>`.
+     */
+    private function temporaryClonePrefix(CheckoutDefinition $checkout): string
+    {
+        return dirname($checkout->absolutePath) . '/.' . basename($checkout->absolutePath) . '.clone-';
+    }
+
+    /**
+     * Leftovers of interrupted runs. Safe to remove: this runs under the
+     * exclusive clone lock, so no other clone is in progress.
+     */
+    private function removeStaleTemporaryClones(CheckoutDefinition $checkout): void
+    {
+        foreach (glob($this->temporaryClonePrefix($checkout) . '*', GLOB_NOSORT) ?: [] as $leftover) {
+            if (is_dir($leftover) && !is_link($leftover)) {
+                $this->filesystem->removeDirectory($leftover);
+            }
+        }
     }
 }

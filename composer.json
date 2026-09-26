@@ -42,8 +42,6 @@
     },
     "extra": {
         "class": "SBUERK\\CheckoutPathRepository\\Plugin",
-        "plugin-modifies-downloads": true,
-        "plugin-modifies-install-path": true,
         "plugin-optional": false
     },
     "config": {

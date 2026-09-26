@@ -38,7 +38,8 @@ use SBUERK\CheckoutPathRepository\Manifest\Manifest;
  *   already requires the package itself, a root requirement `name => version`
  *   is added.
  *
- * Missing checkouts are reported with one notice and otherwise ignored.
+ * Missing checkouts are reported (verbose only, see {@see noticeMissing()})
+ * and otherwise ignored.
  *
  * Stateless service: all state lives in the passed composer instance.
  */
@@ -169,6 +170,20 @@ final class RepositoryRegistrar
     }
 
     /**
+     * The one-line notice about checkouts that are not present, shown for
+     * commands changing the installed packages. In verbose mode it has been
+     * printed with the details during activation already.
+     */
+    public function noticeMissing(IOInterface $io, Manifest $manifest): void
+    {
+        $missing = $manifest->missing();
+        if ($missing === [] || $io->isVerbose()) {
+            return;
+        }
+        $io->writeError($this->missingSummary($manifest, $missing));
+    }
+
+    /**
      * @param list<CheckoutDefinition> $missing
      */
     private function reportMissing(IOInterface $io, Manifest $manifest, array $missing): void
@@ -176,12 +191,7 @@ final class RepositoryRegistrar
         if ($missing === []) {
             return;
         }
-        $io->writeError(sprintf(
-            '<comment>%s%d of %d checkouts not present, skipped (see "composer checkouts:status", clone with "composer checkouts:clone").</comment>',
-            self::MESSAGE_PREFIX,
-            count($missing),
-            count($manifest->checkouts),
-        ));
+        $io->writeError($this->missingSummary($manifest, $missing), true, IOInterface::VERBOSE);
         foreach ($missing as $checkout) {
             $io->writeError(
                 sprintf(
@@ -195,5 +205,18 @@ final class RepositoryRegistrar
                 IOInterface::VERBOSE,
             );
         }
+    }
+
+    /**
+     * @param list<CheckoutDefinition> $missing
+     */
+    private function missingSummary(Manifest $manifest, array $missing): string
+    {
+        return sprintf(
+            '<comment>%s%d of %d checkouts not present, skipped (see "composer checkouts:status", clone with "composer checkouts:clone").</comment>',
+            self::MESSAGE_PREFIX,
+            count($missing),
+            count($manifest->checkouts),
+        );
     }
 }

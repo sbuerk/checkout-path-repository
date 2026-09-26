@@ -67,13 +67,16 @@ final class StatusCommand extends BaseCommand
                 <<<'HELP'
                     Shows every checkout of the manifest: its path, whether it is present, the
                     expected and the current branch, uncommitted changes and the installed
-                    version (vendor/composer/installed.json).
+                    version (vendor/composer/installed.json). The state takes the lock file into
+                    account, as "composer install" works from it.
 
                     Exit codes:
                       <info>0</info>  in sync, nothing to do
                       <info>3</info>  out of sync, run "composer update": a present checkout is required but
-                         not installed, installed from another source or with another version,
-                         or an installed checkout does not exist anymore
+                         not installed or not locked, installed or locked from another source or
+                         with another version, an installed or locked checkout does not exist
+                         anymore, or a package removed from the manifest is still installed
+                         from its vanished checkout ("orphaned")
                       <info>1</info>  error (e.g. invalid configuration)
                     HELP,
             );
@@ -101,12 +104,7 @@ final class StatusCommand extends BaseCommand
         }
 
         $resolver = new StatusResolver($this->git ?? new GitCheckout(new ProcessExecutor($io)));
-        $statuses = $resolver->resolve(
-            $manifest,
-            $composer->getRepositoryManager()->getLocalRepository(),
-            $composer->getInstallationManager(),
-            $this->configurationLoader->rootDirectory($composer),
-        );
+        $statuses = $resolver->resolveForComposer($composer, $manifest, $this->configurationLoader->rootDirectory($composer));
         $inSync = array_filter($statuses, static fn(CheckoutStatus $status): bool => !$status->isInSync()) === [];
 
         if ($format === 'json') {
@@ -135,10 +133,10 @@ final class StatusCommand extends BaseCommand
         $table->setHeaders(['Package', 'Path', 'Present', 'Branch', 'Current', 'Dirty', 'Installed', 'State']);
         foreach ($statuses as $status) {
             $table->addRow([
-                $status->name . ($status->required ? '' : ' (optional)'),
+                $status->name . ($status->expectedBranch === null ? ' (not in manifest)' : ($status->required ? '' : ' (optional)')),
                 $status->path,
                 $status->present ? 'yes' : 'no',
-                $status->expectedBranch,
+                $status->expectedBranch ?? '-',
                 $status->currentBranch ?? '-',
                 $status->dirty === null ? '-' : ($status->dirty ? 'yes' : 'no'),
                 $status->installedVersion === null

@@ -89,7 +89,55 @@ final class CloneCommandTest extends IntegrationTestCase
         self::assertSame('local work', $composerJson['description'] ?? null);
         self::assertSame(['notes.txt'], array_values(array_diff((array) scandir($this->workspace . '/packages/ext'), ['.', '..'])));
         self::assertStringContainsString('fixture/lib: ../packages/lib exists, left untouched', $io->getOutput());
+        self::assertStringContainsString('fixture/ext: ../packages/ext exists but has no composer.json, left untouched - remove it to clone again', $io->getOutput());
         self::assertStringContainsString('checkouts:clone: 0 cloned, 2 already present, 0 not accessible, 0 failed.', $io->getOutput());
+    }
+
+    #[Test]
+    public function warnsAboutDirectoryWithoutComposerJsonWithoutVerbosity(): void
+    {
+        $this->createFleet(false);
+        mkdir($this->workspace . '/packages/ext');
+        file_put_contents($this->workspace . '/packages/ext/partial', 'left over');
+        $this->writeRoot();
+        $io = new BufferIO();
+
+        [$exitCode] = $this->runCommand(new CloneCommand(), $this->createComposer($io), $io, ['packages' => ['fixture/ext']]);
+
+        self::assertSame(CloneCommand::EXIT_SUCCESS, $exitCode);
+        self::assertStringContainsString('fixture/ext: ../packages/ext exists but has no composer.json, left untouched', $io->getOutput());
+    }
+
+    #[Test]
+    public function clonesIntoAnEmptyDirectory(): void
+    {
+        $this->createFleet(false);
+        mkdir($this->workspace . '/packages/lib');
+        $this->writeRoot();
+        $io = new BufferIO();
+
+        [$exitCode] = $this->runCommand(new CloneCommand(), $this->createComposer($io), $io, ['packages' => ['fixture/lib']]);
+
+        self::assertSame(CloneCommand::EXIT_SUCCESS, $exitCode, $io->getOutput());
+        self::assertFileExists($this->workspace . '/packages/lib/composer.json');
+        self::assertStringContainsString('fixture/lib: cloned', $io->getOutput());
+    }
+
+    #[Test]
+    public function clonesThroughATemporaryDirectoryAndRemovesLeftovers(): void
+    {
+        $this->createFleet(false);
+        // Leftover of a clone that was killed (e.g. a container stopped).
+        mkdir($this->workspace . '/packages/.lib.clone-999999/.git', 0777, true);
+        $this->writeRoot();
+        $io = new BufferIO();
+
+        [$exitCode] = $this->runCommand(new CloneCommand(), $this->createComposer($io), $io, ['packages' => ['fixture/lib']]);
+
+        self::assertSame(CloneCommand::EXIT_SUCCESS, $exitCode, $io->getOutput());
+        self::assertFileExists($this->workspace . '/packages/lib/composer.json');
+        self::assertSame('main', trim($this->git(['symbolic-ref', '--short', 'HEAD'], $this->workspace . '/packages/lib')));
+        self::assertSame([], glob($this->workspace . '/packages/.*.clone-*'), 'no temporary clone directory is left');
     }
 
     #[Test]

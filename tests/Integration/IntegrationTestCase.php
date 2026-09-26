@@ -58,6 +58,9 @@ abstract class IntegrationTestCase extends TestCase
         'GIT_SSH_COMMAND' => null,
         'GIT_SSH' => null,
         'GIT_TERMINAL_PROMPT' => null,
+        'GIT_ASKPASS' => null,
+        'GCM_INTERACTIVE' => null,
+        'FAKE_SSH_SLEEP' => null,
         'GIT_AUTHOR_NAME' => 'Integration Test',
         'GIT_AUTHOR_EMAIL' => 'integration-test@example.com',
         'GIT_COMMITTER_NAME' => 'Integration Test',
@@ -333,6 +336,18 @@ abstract class IntegrationTestCase extends TestCase
         $definition = $packages[$name] ?? [];
         self::assertIsArray($definition);
         $packages[$name] = array_replace($definition, $changes);
+        $manifest['packages'] = $packages;
+        $this->writeJson($file, $manifest);
+    }
+
+    protected function removeManifestPackage(string $name): void
+    {
+        $file = $this->workspace . '/packages/checkouts.json';
+        $manifest = $this->readJson($file);
+        $packages = $manifest['packages'] ?? [];
+        self::assertIsArray($packages);
+        self::assertArrayHasKey($name, $packages);
+        unset($packages[$name]);
         $manifest['packages'] = $packages;
         $this->writeJson($file, $manifest);
     }

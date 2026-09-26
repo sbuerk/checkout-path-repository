@@ -55,4 +55,16 @@ final class CheckoutDefinition
     {
         return file_exists($this->absolutePath) || is_link($this->absolutePath);
     }
+
+    /**
+     * An existing, empty directory - not a checkout, but a valid clone target.
+     */
+    public function isEmptyDirectory(): bool
+    {
+        if (!is_dir($this->absolutePath) || is_link($this->absolutePath)) {
+            return false;
+        }
+        $entries = @scandir($this->absolutePath);
+        return $entries !== false && array_diff($entries, ['.', '..']) === [];
+    }
 }

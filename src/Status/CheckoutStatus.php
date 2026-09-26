@@ -16,7 +16,8 @@ declare(strict_types=1);
 namespace SBUERK\CheckoutPathRepository\Status;
 
 /**
- * State of one manifest checkout compared to the installed packages.
+ * State of one manifest checkout compared to the installed packages - or of a
+ * package installed from the checkout directory without a manifest entry.
  */
 final class CheckoutStatus
 {
@@ -34,18 +35,29 @@ final class CheckoutStatus
     public const STATE_VERSION_MISMATCH = 'version-mismatch';
     /** Installed from the checkout location, but the checkout is gone. */
     public const STATE_STALE = 'stale';
+    /**
+     * Not in the manifest (any more), installed or locked from a directory
+     * below the checkout directory that holds no package any more.
+     */
+    public const STATE_ORPHANED = 'orphaned';
+    /**
+     * Not in the manifest, installed from a directory below the checkout
+     * directory that still exists - e.g. through a path repository of the
+     * root composer.json. Informational only.
+     */
+    public const STATE_UNMANAGED = 'unmanaged';
 
-    private const IN_SYNC_STATES = [self::STATE_OK, self::STATE_MISSING, self::STATE_UNUSED];
+    private const IN_SYNC_STATES = [self::STATE_OK, self::STATE_MISSING, self::STATE_UNUSED, self::STATE_UNMANAGED];
 
     public function __construct(
         public readonly string $name,
         public readonly string $path,
         public readonly bool $present,
         public readonly bool $required,
-        public readonly string $expectedBranch,
+        public readonly ?string $expectedBranch,
         public readonly ?string $currentBranch,
         public readonly ?bool $dirty,
-        public readonly string $expectedVersion,
+        public readonly ?string $expectedVersion,
         public readonly ?string $installedVersion,
         public readonly bool $installedFromCheckout,
         public readonly string $state,
@@ -61,7 +73,7 @@ final class CheckoutStatus
     }
 
     /**
-     * @return array{name: string, path: string, present: bool, required: bool, expectedBranch: string, currentBranch: string|null, dirty: bool|null, expectedVersion: string, installedVersion: string|null, installedFromCheckout: bool, state: string, inSync: bool}
+     * @return array{name: string, path: string, present: bool, required: bool, expectedBranch: string|null, currentBranch: string|null, dirty: bool|null, expectedVersion: string|null, installedVersion: string|null, installedFromCheckout: bool, state: string, inSync: bool}
      */
     public function toArray(): array
     {

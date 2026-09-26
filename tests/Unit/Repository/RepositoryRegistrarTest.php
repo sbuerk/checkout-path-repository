@@ -17,6 +17,7 @@ namespace SBUERK\CheckoutPathRepository\Tests\Unit\Repository;
 
 use Composer\Composer;
 use Composer\Config;
+use Composer\EventDispatcher\EventDispatcher;
 use Composer\Factory;
 use Composer\IO\BufferIO;
 use Composer\Package\BasePackage;
@@ -30,6 +31,7 @@ use Composer\Util\Filesystem;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use SBUERK\CheckoutPathRepository\Configuration\ConfigurationLoader;
+use SBUERK\CheckoutPathRepository\Exception\InvalidConfigurationException;
 use SBUERK\CheckoutPathRepository\Manifest\Manifest;
 use SBUERK\CheckoutPathRepository\Plugin;
 use SBUERK\CheckoutPathRepository\Repository\RepositoryRegistrar;
@@ -77,6 +79,7 @@ final class RepositoryRegistrarTest extends TestCase
         $repositoryManager = RepositoryFactory::manager($io, $config, Factory::createHttpDownloader($io, $config));
         $repositoryManager->addRepository(new ArrayRepository());
         $composer->setRepositoryManager($repositoryManager);
+        $composer->setEventDispatcher(new EventDispatcher($composer, $io));
         return $composer;
     }
 
@@ -161,14 +164,32 @@ final class RepositoryRegistrarTest extends TestCase
     }
 
     #[Test]
-    public function reportsMissingCheckoutsWithOneNotice(): void
+    public function missingCheckoutsAreQuietDuringRegistration(): void
     {
         $io = new BufferIO();
         (new RepositoryRegistrar())->register(self::composer($io), $io, self::manifest());
 
+        self::assertSame('', $io->getOutput(), 'activate() runs for every command, the notice is verbose there');
+    }
+
+    #[Test]
+    public function noticeMissingPrintsOneLine(): void
+    {
+        $io = new BufferIO();
+        (new RepositoryRegistrar())->noticeMissing($io, self::manifest());
+
         $output = $io->getOutput();
         self::assertSame(1, substr_count(trim($output), PHP_EOL) + 1, 'exactly one line: ' . $output);
         self::assertStringContainsString('checkout-path-repository: 2 of 4 checkouts not present, skipped', $output);
+    }
+
+    #[Test]
+    public function noticeMissingIsSkippedInVerboseModeAsRegistrationPrintedIt(): void
+    {
+        $io = new BufferIO('', OutputInterface::VERBOSITY_VERBOSE);
+        (new RepositoryRegistrar())->noticeMissing($io, self::manifest());
+
+        self::assertSame('', $io->getOutput());
     }
 
     #[Test]
@@ -178,6 +199,7 @@ final class RepositoryRegistrarTest extends TestCase
         (new RepositoryRegistrar())->register(self::composer($io), $io, self::manifest());
 
         $output = $io->getOutput();
+        self::assertStringContainsString('checkout-path-repository: 2 of 4 checkouts not present, skipped', $output);
         self::assertStringContainsString('fixture/missing: missing directory ' . self::fixtures() . '/checkouts/missing', $output);
         self::assertStringContainsString('fixture/no-composer-json: no composer.json in ' . self::fixtures() . '/checkouts/no-composer-json', $output);
         self::assertStringContainsString('registered fixture/present-a (1.19.x-dev) from checkouts/present-a', $output);
@@ -207,5 +229,20 @@ final class RepositoryRegistrarTest extends TestCase
 
         self::assertCount(3, $composer->getRepositoryManager()->getRepositories());
         self::assertSame(['fixture/present-a'], array_keys($composer->getPackage()->getRequires()));
+    }
+
+    #[Test]
+    public function pluginPrintsInvalidConfigurationBeforeFailing(): void
+    {
+        $io = new BufferIO();
+        $composer = self::composer($io);
+        $composer->getPackage()->setExtra([ConfigurationLoader::EXTRA_KEY => ['manifest' => 'checkouts/does-not-exist.json']]);
+
+        try {
+            (new Plugin())->activate($composer, $io);
+            self::fail('Expected an InvalidConfigurationException');
+        } catch (InvalidConfigurationException $e) {
+            self::assertStringContainsString($e->getMessage(), $io->getOutput(), 'written, as composer swallows it while collecting plugin commands');
+        }
     }
 }

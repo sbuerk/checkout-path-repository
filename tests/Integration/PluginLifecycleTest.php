@@ -20,6 +20,7 @@ use Composer\IO\BufferIO;
 use Composer\Plugin\Capability\CommandProvider;
 use PHPUnit\Framework\Attributes\Test;
 use SBUERK\CheckoutPathRepository\Command\StatusCommand;
+use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * The plugin installed into the root project from this package (path
@@ -57,7 +58,7 @@ final class PluginLifecycleTest extends IntegrationTestCase
 
         // 2. The plugin is installed now: the plugin manager activates it and
         //    provides the commands.
-        $io = new BufferIO();
+        $io = new BufferIO('', OutputInterface::VERBOSITY_VERBOSE);
         $composer = $this->createComposer($io, false);
         $commandNames = [];
         foreach ($composer->getPluginManager()->getPluginCapabilities(CommandProvider::class, ['composer' => $composer, 'io' => $io]) as $provider) {

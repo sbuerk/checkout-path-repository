@@ -202,12 +202,80 @@ final class StatusCommandTest extends IntegrationTestCase
         $this->writeRoot();
         $this->update();
         $this->filesystem->removeDirectory($this->workspace . '/packages/ext');
+        // The removal ran in a sub process: without this, PHP's stat cache
+        // still resolves the now dangling vendor symlink.
+        clearstatcache(true);
 
         [$exitCode, $status] = $this->statusAsJson();
 
         self::assertSame(StatusCommand::EXIT_OUT_OF_SYNC, $exitCode);
         self::assertSame(CheckoutStatus::STATE_STALE, self::checkout($status, 'fixture/ext')['state']);
         self::assertTrue(self::checkout($status, 'fixture/ext')['installedFromCheckout']);
+    }
+
+    #[Test]
+    public function reportsPackageRemovedFromManifestAndDiskAsOrphaned(): void
+    {
+        $this->createFleet();
+        $this->writeRoot();
+        $this->update();
+        $this->removeManifestPackage('fixture/ext');
+        $this->filesystem->removeDirectory($this->workspace . '/packages/ext');
+        clearstatcache(true);
+
+        [$exitCode, $status] = $this->statusAsJson();
+
+        self::assertSame(StatusCommand::EXIT_OUT_OF_SYNC, $exitCode);
+        self::assertSame(
+            [
+                'name' => 'fixture/ext',
+                'path' => '../packages/ext',
+                'present' => false,
+                'required' => false,
+                'expectedBranch' => null,
+                'currentBranch' => null,
+                'dirty' => null,
+                'expectedVersion' => null,
+                'installedVersion' => '5.1.x-dev',
+                'installedFromCheckout' => true,
+                'state' => CheckoutStatus::STATE_ORPHANED,
+                'inSync' => false,
+            ],
+            self::checkout($status, 'fixture/ext'),
+        );
+    }
+
+    #[Test]
+    public function reportsPackageRemovedFromManifestOnlyAsUnmanaged(): void
+    {
+        $this->createFleet();
+        $this->writeRoot();
+        $this->update();
+        $this->removeManifestPackage('fixture/ext');
+
+        [$exitCode, $status] = $this->statusAsJson();
+
+        self::assertSame(StatusCommand::EXIT_IN_SYNC, $exitCode, 'composer install still works, nothing is broken');
+        self::assertSame(CheckoutStatus::STATE_UNMANAGED, self::checkout($status, 'fixture/ext')['state']);
+        self::assertSame('5', self::checkout($status, 'fixture/ext')['currentBranch']);
+    }
+
+    #[Test]
+    public function ignoresPathPackagesOutsideTheCheckoutDirectory(): void
+    {
+        $this->createFleet();
+        $this->createGitRepository($this->workspace . '/elsewhere/tool', 'main', ['name' => 'fixture/tool']);
+        $this->writeRoot([
+            'repositories' => [['packagist.org' => false], ['type' => 'path', 'url' => '../elsewhere/tool', 'options' => ['versions' => ['fixture/tool' => '1.0.0']]]],
+            'require' => ['fixture/tool' => '*'],
+        ]);
+        $this->update();
+
+        [$exitCode, $status] = $this->statusAsJson();
+
+        self::assertSame(StatusCommand::EXIT_IN_SYNC, $exitCode);
+        self::assertIsArray($status['checkouts']);
+        self::assertCount(3, $status['checkouts'], 'only the manifest entries');
     }
 
     #[Test]
