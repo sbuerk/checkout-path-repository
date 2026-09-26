@@ -33,7 +33,9 @@ or, as a local package in a mono repository, through a `path` repository:
 
 `allow-plugins` is required: the plugin declares `plugin-optional: false`, so a
 non-interactive composer run fails instead of silently running without it (the
-checkouts would just not be installed, which is hard to notice).
+checkouts would just not be installed, which is hard to notice). This also
+applies when the plugin is pulled in by another package: the consuming root
+project has to allow it explicitly.
 
 Then configure the manifest, see [configuration](configuration.md).
 
@@ -61,17 +63,22 @@ composer checkouts:status \
 Scripts can always run the last line: it is a no-op when everything is in
 sync. The same line covers checkouts cloned later on.
 
-## Plugin ordering hints
+## No plugin ordering hints
 
-The package declares composer's ordering hints in its `extra` section:
+The package declares `plugin-optional: false` only. Composer's ordering hints
+`plugin-modifies-downloads` and `plugin-modifies-install-path` are not set:
+the plugin changes neither downloads nor install paths, and installing it
+first in the run that installs it would not help – resolution has happened by
+then (see the bootstrap sequence above).
 
-* `plugin-modifies-downloads: true` and `plugin-modifies-install-path: true` –
-  when composer installs the plugin in the same run as other packages, it is
-  installed and activated first.
-* `plugin-optional: false` – see above.
+## IDE: exclude the plugin's own tooling
 
-They do not change the bootstrap sequence: resolution happens before any
-plugin gets installed.
+When the plugin is installed from a local directory (a `path` repository with
+`symlink: true`), `vendor/sbuerk/checkout-path-repository` points at that
+directory – including its development `vendor/` (composer, PHPUnit, PHP CS
+Fixer) once `composer install` ran there. Exclude
+`<plugin directory>/vendor` and `<plugin directory>/.cache` in the IDE, next
+to the other excluded build directories, to avoid duplicate class indexing.
 
 ## See also
 

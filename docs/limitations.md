@@ -31,11 +31,31 @@ machine, so a `composer.lock` is machine specific:
 * **Checkout added since the lock was written** (cloned, or access granted):
   the plugin adds its requirement, and `composer install` rejects the lock
   with exit code `4` ("Required package ... is not present in the lock
-  file"). Run `composer update`; `checkouts:status` reports `not-installed`.
+  file"). Run `composer update`; `checkouts:status` reports `not-installed`
+  (exit code `3`).
 * **Checkout removed since the lock was written**: the lock still contains a
   `path` package whose source is gone, and `composer install` fails with
   `Source path "../packages/..." is not found`. Run `composer update`;
-  `checkouts:status` reports `stale`.
+  `checkouts:status` reports `stale` (exit code `3`).
+
+* **Package removed from the manifest** (and its checkout deleted): the lock
+  still contains it, `composer install` fails with `Source path ... is not
+  found`. `checkouts:status` reports it as `orphaned` (exit code `3`), and
+  `composer update` removes it. If the checkout directory is kept, the
+  package is reported as `unmanaged` (in sync – `install` still works) and
+  disappears with the next `composer update`.
+
+All three cases are covered by `ComposerBinaryTest` with composer's real
+binary, so `composer checkouts:status || composer update` recovers from them.
+Only packages below the checkout directory of the manifest are considered for
+`orphaned`/`unmanaged`: with inline configuration, give the checkouts their
+own `directory` instead of the project root, otherwise every `path` package
+of the project shows up as `unmanaged`.
+
+Which of composer's `install` errors appear depends on the composer version:
+`Source path ... is not found` is an error since composer 2.4 (2.3 exits with
+`0`), the exit code `4` for a lock missing a required package since 2.5. The
+status of the plugin is the same for all supported versions.
 
 Do not commit the `composer.lock` of a project that uses optional checkouts,
 or accept that `composer update` is the command to run there.
@@ -52,6 +72,11 @@ The configuration is validated in `activate()`, which runs for every command.
 A broken manifest therefore fails `composer show` and `composer remove` as
 well – deliberately, a silently ignored manifest would drop checkouts without
 notice. Fix the manifest, or run a single command with `--no-plugins`.
+
+The validation errors are always printed first. For the `checkouts:*`
+commands composer then adds that the command does not exist, as it skips the
+commands of a plugin that failed to activate; for other commands the error is
+shown twice (once by the plugin, once by composer).
 
 ## 5. `--no-plugins` disables everything
 
@@ -71,7 +96,7 @@ same packages, or set the manifest `version` accordingly.
 
 ## 7. Non-interactive git and ssh host keys
 
-`checkouts:clone` runs ssh with `BatchMode=yes`. In a fresh environment
+`checkouts:clone` runs ssh with `BatchMode=yes` (and `ConnectTimeout=15`). In a fresh environment
 without a `known_hosts` entry for the git host (a new container, for
 example) ssh refuses the unknown host key and the remote is reported as not
 accessible. Add the host key, or set `GIT_SSH_COMMAND` explicitly, e.g.
@@ -83,7 +108,9 @@ use is acceptable for you – an explicit `GIT_SSH_COMMAND` is used unchanged.
 The clone lock is an advisory `flock()`. It works between processes sharing a
 kernel, including containers bind mounting the same host directory on Linux.
 It is not reliable on network file systems or across the host/VM boundary of
-some container runtimes (e.g. file sharing of Docker Desktop on macOS).
+some container runtimes (e.g. file sharing of Docker Desktop on macOS). The
+lock serialises clone runs only; a concurrent `composer update` is safe
+because clones are moved into place only when complete.
 
 ## 9. Working directory
 

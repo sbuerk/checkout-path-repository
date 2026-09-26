@@ -27,6 +27,23 @@ other command. The alternatives are worse:
 check which checkout directories contain a `composer.json`, register them and
 extend the in-memory root package.
 
+### Errors and notices from `activate()`
+
+An invalid configuration is written to the error output and then rethrown.
+Writing it first matters: while composer collects the commands of plugins
+(`Application::getPluginCommands()`), it creates the composer instance and
+swallows exceptions. Without the write, `composer checkouts:status` with a
+broken manifest would only report that there is no `checkouts` command. The
+rethrow keeps every command failing, see [limitations](limitations.md#4-an-invalid-manifest-breaks-every-composer-command).
+
+`activate()` runs for every command, so the notice about checkouts that are
+not present is verbose there. `activate()` registers a listener for
+`PluginEvents::COMMAND` on the composer instance it is given, which prints the
+one-line notice for `install`, `update`, `remove` and `reinstall` – the
+commands where it explains a missing package. A listener closure bound to the
+instance keeps the plugin object free of state (the event itself carries
+neither the composer instance nor the IO).
+
 ## Why no git operation in `activate()`
 
 `activate()` runs on **every** composer invocation, including `show`,
@@ -90,19 +107,68 @@ long as the relative layout is the same.
 
 ## Installed "from the checkout"
 
-`checkouts:status` reads composer's local repository
-(`vendor/composer/installed.json`). A package counts as installed from its
-checkout when its dist type is `path` and either
+`checkouts:status` has to predict whether `composer install` works with what
+is on disk, so it compares every checkout with two sources:
+
+* **`vendor/composer/installed.json`, read from disk.** Composer's own local
+  repository cannot be used: `Factory::createComposer()` purges every package
+  whose install path is not readable – which is exactly the dangling vendor
+  symlink a removed checkout leaves behind. A status built on it reports a
+  removed checkout as `missing` (in sync) while `composer install` fails.
+* **The lock file**, if there is one – `composer install` works from it. A
+  locked checkout package whose checkout is gone fails with `Source path ...
+  is not found`; a present, required checkout that is not locked makes
+  `install` reject the lock (exit code `4`).
+
+A package record counts as "from the checkout" when its dist type is `path`
+and either
 
 * its install path resolves – following the vendor symlink – to the checkout
   directory (`realpath()` of both), or
 * its `dist.url`, resolved against the root directory, is the checkout
   directory. This covers mirrored installs (composer falls back to copying
-  when symlinks are not possible) and checkouts that disappeared since
-  (`stale`).
+  when symlinks are not possible), checkouts that disappeared, and lock file
+  entries.
 
-The version check compares the installed version with the manifest `version`
-as a constraint, which catches a changed manifest (`version-mismatch`).
+The resulting state: a missing checkout that is still installed or locked from
+its path is `stale`; a present checkout installed or locked from elsewhere is
+`other-source`; a present, required checkout absent from `installed.json` or
+from an existing lock is `not-installed`; a version that does not match the
+manifest `version` (as a constraint) in either source is `version-mismatch`.
+
+Packages installed or locked as `path` packages from a directory below the
+checkout directory, but without a manifest entry, are listed too. A package
+removed from the manifest is not registered any more, but the lock still
+references its directory: when that directory is gone as well, `install`
+fails (`orphaned`, out of sync). Only the checkout directory is scanned, so
+`path` packages elsewhere in the project are never reported.
+
+`ComposerBinaryTest` checks this with composer's real binary in a separate
+process – an in-process test keeps PHP's stat cache and would still resolve a
+removed checkout through the vendor symlink.
+
+## Cloning into a temporary directory
+
+`checkouts:clone` clones into a hidden sibling of the target,
+`.<directory>.clone-<pid>`, and `rename()`s it into place when git is done.
+Another project running `composer update` at the same time (the lock only
+serialises clone runs) therefore never registers a half-written working tree,
+and a clone killed hard (a container being stopped) leaves a temporary
+directory instead of a directory that looks like a checkout. Leftovers are
+removed by the next clone run, which holds the lock and so knows that no other
+clone is in progress. The sibling is on the same file system, so the rename is
+atomic. An empty target directory is replaced; any other existing directory is
+left alone.
+
+## Timeouts of remote git calls
+
+ssh gets `-o ConnectTimeout=15` next to `BatchMode=yes`, so an unreachable
+host fails within seconds instead of after composer's `process-timeout`
+(300 seconds by default) – per package, which adds up when containers start.
+The access check (`git ls-remote`) also runs with a process timeout of its own
+(60 seconds, or composer's `process-timeout` if lower), which covers https
+remotes without a connect timeout. The clone itself uses composer's
+`process-timeout`; large first clones may need `COMPOSER_PROCESS_TIMEOUT`.
 
 ## Locking of `checkouts:clone`
 
@@ -119,9 +185,9 @@ waits for it would let a third process lock a new file at the same time.
 
 The plugin requires `composer-plugin-api: ^2.3`:
 
-* composer reports plugin API `2.3.0` from composer 2.3 up to 2.8 and `2.9.0`
-  from composer 2.9 on – there is no `2.4`–`2.8` plugin API. A constraint like
-  `^2.6` would silently mean "composer 2.9+".
+* composer reports plugin API `2.3.0` for composer 2.3 – 2.5, `2.6.0` for
+  2.6 – 2.8 and `2.9.0` from 2.9 on (`PluginInterface::PLUGIN_API_VERSION` of
+  the release tags). There is no plugin API version for 2.4, 2.5, 2.7 or 2.8.
 * The newest API used is `ProcessExecutor::execute()` with an array command
   (no shell, no escaping), added in composer 2.3. Stability flags use the
   `BasePackage::STABILITY_*` constants, which exist in all composer 2 versions
@@ -148,7 +214,7 @@ the project's `vendor/`.
 | `Repository\RepositoryRegistrar` | Prepends path repositories, extends root requirements and stability flags, reports missing checkouts. |
 | `Git\GitCheckout`, `Git\GitResult` | `git` calls through composer's `ProcessExecutor`, non-interactive environment. |
 | `Lock\CheckoutLock`, `Lock\AcquiredLock` | `flock()` with timeout and wait notice. |
-| `Status\StatusResolver`, `Status\CheckoutStatus` | Compares checkouts with installed packages. |
+| `Status\StatusResolver`, `Status\CheckoutStatus` | Compares checkouts with `installed.json` and the lock file. |
 | `Command\CloneCommand`, `Command\StatusCommand`, `Command\CommandProvider` | The `checkouts:*` commands. |
 
 All services are stateless: dependencies are passed to the constructor
